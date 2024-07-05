@@ -36,70 +36,64 @@ trapezoidal_auc <- function(time, value) {
 # User Interface ----------------------------------------------------------------------
 
 ui <- fluidPage(
-
-
-# App Title ---------------------------------------------------------------
-  
-
+  # App Title ---------------------------------------------------------------
   titlePanel("Summary statistics and AUC calculation for Longitudinal data"),
-
-# set up sidebar for user interaction ---------------------------------------------------
-
   
+  # Set up sidebar for user interaction ---------------------------------------------------
   sidebarLayout(
     sidebarPanel(
-      helpText("The dataset must have columns named: ID, Time, Visit, Measurement")
-    ,
-  
-  radioButtons("Treatment", "Select visualization type:",
-                 choices = choice_TRT 
-                 ,selected = choice_TRT[1])
-    
-    ,
-conditionalPanel(condition = "input.Treatment != 'Individual'",
-                 checkboxInput("Summary", "Summary (default: Mean)", value = FALSE))
-    , 
-radioButtons("plotvariable", "Select variable for X-axis",
-                  choices = choice_plotvariable
-                  ,selected = "Visit"),
-# Display this only if the plotvariable is Individual
-conditionalPanel(condition = "input.Treatment == 'Individual'",
-                   selectInput("selectedID", "Select ID:",
-                               choices = unique(data$ID),
-                               selected = unique(data$ID)[1]
-                 )),
-conditionalPanel(condition = "input.Summary ==true",
-                 selectInput("SummaryType", "Select Summary Type",
-                             choices = choice_summary,
-                             selected = choice_summary[1])
-                 ),
-# Auc Calculation
-checkboxInput("showAUC", "Area Under Curve(AUC)", value = FALSE),
-# Display this only if the AUC is shown
-conditionalPanel(condition = "input.showAUC == true",
-                 selectInput("SummaryType", "Select AUC Summary Type",
-                             choices = choice_summary,
-                             selected = choice_summary[1])
-                 ),
-checkboxInput("hideplot", "Hide Plot", value = FALSE),
-actionButton("runBtn", "Run")
+      helpText("Upload your CSV file with columns named: ID, Time, Visit, Measurement, treatment"),
+      fileInput("file", "Choose CSV File",
+                multiple = FALSE,
+                accept = c("text/csv", 
+                           "text/comma-separated-values,text/plain", 
+                           ".csv")),
+      tags$hr(),
+      
+      radioButtons("Treatment", "Select visualization type:",
+                   choices = choice_TRT, 
+                   selected = choice_TRT[1]),
+      
+      conditionalPanel(condition = "input.Treatment != 'Individual'",
+                       checkboxInput("Summary", "Summary (default: Mean)", value = FALSE)),
+      
+      radioButtons("plotvariable", "Select variable for X-axis",
+                   choices = choice_plotvariable,
+                   selected = "Visit"),
+      
+      # Display this only if the plotvariable is Individual
+      conditionalPanel(condition = "input.Treatment == 'Individual'",
+                       uiOutput("individualSelect")),
+      
+      conditionalPanel(condition = "input.Summary == true",
+                       selectInput("SummaryType", "Select Summary Type",
+                                   choices = choice_summary,
+                                   selected = choice_summary[1])),
+      
+      # AUC Calculation
+      checkboxInput("showAUC", "Area Under Curve (AUC)", value = FALSE),
+      
+      # Display this only if the AUC is shown
+      conditionalPanel(condition = "input.showAUC == true && input.Treatment != 'Individual'",
+                       selectInput("AUC_SummaryType", "Select AUC Summary Type",
+                                   choices = choice_summary,
+                                   selected = choice_summary[1])),
+      
+      checkboxInput("hideplot", "Hide Plot", value = FALSE),
+      actionButton("runBtn", "Run")
     ),
     
-# main panel for showing results
+    # Main panel for showing results
     mainPanel(
-                conditionalPanel(condition = "input.runBtn > 0 && input.hideplot == false",
-                                 plotOutput("InteractionPlot"),
-                ),
-                conditionalPanel(condition = "input.runBtn > 0",
-                                 verbatimTextOutput("Summary")
-                ),
-                conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true && input.hideplot == false",
-                                 plotOutput("AUCPlot")
-                ),
-                conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true",
-                                 verbatimTextOutput("AUCSummary")
-                )
-              )
+      conditionalPanel(condition = "input.runBtn > 0 && input.hideplot == false",
+                       plotOutput("InteractionPlot")),
+      conditionalPanel(condition = "input.runBtn > 0",
+                       verbatimTextOutput("Summary")),
+      conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true && input.hideplot == false",
+                       plotOutput("AUCPlot")),
+      conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true",
+                       verbatimTextOutput("AUCSummary"))
+    )
   )
 )
 
@@ -108,17 +102,25 @@ actionButton("runBtn", "Run")
 # Server ------------------------------------------------------------------
 
 # Define server logic
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  # data <- reactive({
-  #   req(input$file)
-  #   df <- read.csv(input$file$datapath)
-  #   return(df)
-  # })
-  # Interaction Plot --------------------------------------------------------
+  data <- reactive({
+    req(input$file)
+    df <- read.csv(input$file$datapath)
+    return(df)
+  })
+  
+  output$individualSelect <- renderUI({
+    req(data())
+    selectInput("selectedID", "Select ID:",
+                choices = unique(data()$ID),
+                selected = unique(data()$ID)[1])
+  })
+  # Interaction Plot and confidence interval--------------------------------------------------------
   
   
 output$InteractionPlot =renderPlot({  
+  data <- data()
     switch(input$Treatment,
          "Treated" = {
                switch(input$plotvariable,
@@ -128,8 +130,9 @@ output$InteractionPlot =renderPlot({
                           labs(x = "Time",
                                y = paste(input$SummaryType),
                                color = "Visit")+
-                          theme_classic()+
-                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                          theme_classic()+ 
+                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))+
+                          
                       },
                       "Time" = {ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
                           stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
@@ -216,6 +219,7 @@ output$InteractionPlot =renderPlot({
   # Summary statistics ------------------------------------------------------
   
   output$Summary <- renderPrint({
+    data <- data()
     switch(input$Treatment,
            "Treated" = {
              o=data_treated %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
@@ -252,18 +256,20 @@ output$InteractionPlot =renderPlot({
   })
 
 
-# AUC Plot-----------------------------------
+  # AUC Plot-----------------------------------
 
     # Calculate AUC for each individual ID at each Visit using the trapezoidal rule
-    auc_trapezoidal<- data %>%
-      group_by(ID,Visit) %>%
-      summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
-      ungroup()
-    auc_trapezoidal$treatment <- data$treatment[match(auc_trapezoidal$ID, data$ID)]
-    auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
-    auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
-    auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
-output$AUCPlot <- renderPlot({
+
+output$AUCPlot <- renderPlot({  
+                 data <- data()
+  auc_trapezoidal<- data %>%
+    group_by(ID,Visit) %>%
+    summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
+    ungroup()
+  auc_trapezoidal$treatment <- data$treatment[match(auc_trapezoidal$ID, data$ID)]
+  auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
+  auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
+  auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
         switch(input$Treatment,
                "Treated" = {
                  ggplot(auc_treated, aes(x = Visit, y = auc, color = ID, group = ID)) +
@@ -285,13 +291,13 @@ output$AUCPlot <- renderPlot({
                },
                "Pooled" = {
                  ggplot(auc_trapezoidal, aes(x = Visit, y = auc, color = treatment,group = treatment )) +
-                   stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                   stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                   stat_summary(fun = input$AUC_SummaryType, geom = "line", size = 0.5) +
+                   stat_summary(fun = input$AUC_SummaryType, geom = "point", size = 1.5) +
                    labs(x = "Time",
-                        y = paste(input$SummaryType),
+                        y = paste(input$AUC_SummaryType),
                         color = "Group")+
                    theme_classic()+
-                   ggtitle(paste("Summary measure",input$SummaryType,"for AUC in Treatment Groups"))
+                   ggtitle(paste("Summary measure",input$AUC_SummaryType,"for AUC in Treatment Groups"))
                },
                "Individual" = {
                  ggplot(data %>% filter(ID == input$selectedID) %>%
@@ -310,27 +316,36 @@ output$AUCPlot <- renderPlot({
     
 # AUC Summary -------------------------------------------------------------
 output$AUCSummary <- renderPrint({
+  data <- data()
+  auc_trapezoidal<- data %>%
+    group_by(ID,Visit) %>%
+    summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
+    ungroup()
+  auc_trapezoidal$treatment <- data$treatment[match(auc_trapezoidal$ID, data$ID)]
+  auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
+  auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
+  auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
       switch(input$Treatment,
              "Treated" = {
-               o=auc_treated %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$SummaryType))
+               o=auc_treated %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$AUC_SummaryType))
                b=xtabs(auc ~ Visit, data = o)
                if(input$plotvariable=="Visit") b = b
                else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for AUC in", input$Treatment, "group"))
+               knitr::kable(b, caption = paste("Summary statistics",input$AUC_SummaryType,"for AUC in", input$Treatment, "group"))
              },
              "Control" = {
-               o=auc_control %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$SummaryType))
+               o=auc_control %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$AUC_SummaryType))
                b=xtabs(auc ~ Visit, data = o)
                if(input$plotvariable=="Visit") b = b
                else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for AUC in", input$Treatment, "group"))
+               knitr::kable(b, caption = paste("Summary statistics",input$AUC_SummaryType,"for AUC in", input$Treatment, "group"))
              },
              "Pooled" = {
-               o=auc_trapezoidal %>% group_by(Visit, treatment) %>% summarise_at(vars(auc), list(input$SummaryType))
+               o=auc_trapezoidal %>% group_by(Visit, treatment) %>% summarise_at(vars(auc), list(input$AUC_SummaryType))
                b=xtabs(auc ~ Visit + treatment, data = o)
                if(input$plotvariable=="Visit") b = b
                else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for AUC in", input$Treatment, "group"))
+               knitr::kable(b, caption = paste("Summary statistics",input$AUC_SummaryType,"for AUC in", input$Treatment, "group"))
              },
              "Individual" = {
                b = xtabs(auc ~ Visit, 

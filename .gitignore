@@ -1,6 +1,12 @@
-.Rproj.user
+# Ignore R project files
+*.Rproj
+*.Rprofile
+*.Rproj.user
+
+# Ignore other common files
 .Rhistory
 .RData
 .Ruserdata
-.Rprofile
+.Rapp.history
+*.pper
 

@@ -51,13 +51,14 @@ ui <- fluidPage(
       helpText("The dataset must have columns named: ID, Time, Visit, Measurement")
     ,
   
-    radioButtons("Treatment", "Select visualization type:",
+  radioButtons("Treatment", "Select visualization type:",
                  choices = choice_TRT 
                  ,selected = choice_TRT[1])
     
     ,
 conditionalPanel(condition = "input.Treatment != 'Individual'",
-                 checkboxInput("Summary", "Summary (default: Mean)", value = FALSE)), 
+                 checkboxInput("Summary", "Summary (default: Mean)", value = FALSE))
+    , 
 radioButtons("plotvariable", "Select variable for X-axis",
                   choices = choice_plotvariable
                   ,selected = "Visit"),
@@ -73,10 +74,13 @@ conditionalPanel(condition = "input.Summary ==true",
                              selected = choice_summary[1])
                  ),
 # Auc Calculation
-checkboxInput("showAUC", "AUC", value = FALSE),
+checkboxInput("showAUC", "Area Under Curve(AUC)", value = FALSE),
 # Display this only if the AUC is shown
 conditionalPanel(condition = "input.showAUC == true",
-                 checkboxInput ("sum_AUC","AUC_Summary", value = FALSE)),
+                 selectInput("SummaryType", "Select AUC Summary Type",
+                             choices = choice_summary,
+                             selected = choice_summary[1])
+                 ),
 actionButton("runBtn", "Run")
     ),
     
@@ -84,18 +88,8 @@ actionButton("runBtn", "Run")
     mainPanel(
                        
                        plotOutput("InteractionPlot"),
-                         uiOutput("conditionalUI") ,
-                       # ,
-                # conditionalPanel(condition = "input.Summary == true ",
-                #                  verbatimTextOutput("Summary")
-                #                  ),
-                 conditionalPanel(condition = "input.showAUC == true",
-                                  plotOutput("AUCPlot")
-                                 )
-                # conditionalPanel(condition = "input.showAUC == true && input.sum_AUC == true",
-                #                  verbatimTextOutput("AUCSummary")
-                #                  )
-      
+                       verbatimTextOutput("Summary"),
+                         uiOutput("conditionalUI")
               )
   )
 )
@@ -112,147 +106,134 @@ server <- function(input, output) {
   #   df <- read.csv(input$file$datapath)
   #   return(df)
   # })
+  # Interaction Plot --------------------------------------------------------
+  
+  
+output$InteractionPlot =renderPlot({  
+    switch(input$Treatment,
+         "Treated" = {
+               switch(input$plotvariable,
+                      "Visit" = {ggplot(data_treated , aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Time",
+                               y = paste(input$SummaryType),
+                               color = "Visit")+
+                          theme_classic()+
+                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                      },
+                      "Time" = {ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Visit",
+                               y = paste(input$SummaryType),
+                               color = "Time") +
+                          theme_classic()+
+                          ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
+                      }
+               )
+             },
+         "Control" = {
+               switch(input$plotvariable,
+                      "Visit" = {ggplot(data_control, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Time",
+                               y = paste(input$SummaryType),
+                               color = "Visit")+
+                          theme_classic()+
+                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                      },
+                      "Time" = {ggplot(data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Visit",
+                               y = paste(input$SummaryType),
+                               color = "Time") +
+                          theme_classic()+
+                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                      }
+               )
+         },
+         "Pooled" = {
+           
+               switch(input$plotvariable,
+                      "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Time",
+                               y = paste(input$SummaryType),
+                               color = "Visit")+
+                          theme_classic()+
+                          ggtitle("Interaction plot for all observations")
+                      },
+                      "Time" = {ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          labs(x = "Visit",
+                               y = paste(input$SummaryType),
+                               color = "Time") +
+                          theme_classic()+
+                          ggtitle("Interaction plot for all observations")
+                      }
+               )
+             },
+         "Individual" = {ggplot(data %>% filter(ID == input$selectedID) , 
+                                aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+                 geom_line( size = 0.5) + geom_point(size = 1.5) +
+                 labs(x = "Time",
+                      y = "Measurement",
+                      color = "Visit")+
+                 ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
+                                                                                                             %>%select(treatment))[1])==1, "Treated","Control")))+
+                 theme_classic()}
+             
+  )})
+  
+  # Summary statistics ------------------------------------------------------
+  
+  output$Summary <- renderPrint({
+    switch(input$Treatment,
+           "Treated" = {
+             o=data_treated %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
+             b=xtabs(Measurement ~ Visit + Time, data = o)
+             if(input$plotvariable=="Visit") b = b
+             else b = t(b)
+             knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
+           },
+           "Control" = {
+             o=data_control %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
+             b=xtabs(Measurement ~ Visit + Time, data = o)
+             if(input$plotvariable=="Visit") b = b
+             else b = t(b)
+             knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
+           },
+           "Pooled" = {
+             o=data %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
+             b=xtabs(Measurement ~ Visit + Time, data = o)
+             if(input$plotvariable=="Visit") b = b
+             else b = t(b)
+             knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
+           },
+           "Individual" = {
+             b = xtabs(Measurement ~ Visit + Time, 
+                       data %>% filter(ID == input$selectedID)
+             )
+             if(input$plotvariable=="Visit") b=b
+             else b = t(b)
+             knitr::kable(b, caption = paste("Individual record for subject ID:", input$selectedID,"Group:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
+                                                                                                                                     %>%select(treatment))[1])==1, "Treated","Control")))
+             
+           }
+    )
+  })
   
   output$conditionalUI<-renderUI({
     
     req(input$runBtn) # wait for the button to be clicked
-
-    if(input$Summary == TRUE) verbatimTextOutput("Summary")
-    if(input$showAUC == TRUE)
-    {
-     if(input$sum_AUC == TRUE) verbatimTextOutput("AUCSummary")
-    }
-# Interaction Plot --------------------------------------------------------
-
     
-switch(input$Treatment,
-           "Treated" = {
-             output$InteractionPlot =
-               renderPlot({ 
-                 switch(input$plotvariable,
-                        "Visit" = {ggplot(data_treated , aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Time",
-                                 y = paste(input$SummaryType),
-                                 color = "Visit")+
-                            theme_classic()+
-                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
-                        },
-                        "Time" = {ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Visit",
-                                 y = paste(input$SummaryType),
-                                 color = "Time") +
-                            theme_classic()+
-                            ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
-                        }
-                 )
-               })
-           },
-           "Control" = {
-             output$InteractionPlot =
-               renderPlot({ 
-                 switch(input$plotvariable,
-                        "Visit" = {ggplot(data_control, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Time",
-                                 y = paste(input$SummaryType),
-                                 color = "Visit")+
-                            theme_classic()+
-                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
-                        },
-                        "Time" = {ggplot(data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Visit",
-                                 y = paste(input$SummaryType),
-                                 color = "Time") +
-                            theme_classic()+
-                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
-                        }
-                 )
-               })
-           },
-           "Pooled" = {
-             output$InteractionPlot =
-               renderPlot({ 
-                 switch(input$plotvariable,
-                        "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Time",
-                                 y = paste(input$SummaryType),
-                                 color = "Visit")+
-                            theme_classic()+
-                            ggtitle("Interaction plot for all observations")
-                        },
-                        "Time" = {ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
-                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                            labs(x = "Visit",
-                                 y = paste(input$SummaryType),
-                                 color = "Time") +
-                            theme_classic()+
-                            ggtitle("Interaction plot for all observations")
-                        }
-                 )
-               })
-           },
-           "Individual" = {
-             output$InteractionPlot =
-               renderPlot({ggplot(data %>% filter(ID == input$selectedID) , 
-                              aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-           geom_line( size = 0.5) + geom_point(size = 1.5) +
-           labs(x = "Time",
-                y = "Measurement",
-                color = "Visit")+
-           ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
-                                                                                                       %>%select(treatment))[1])==1, "Treated","Control")))+
-           theme_classic()}
-           )}
-    )
-    
-# Summary statistics ------------------------------------------------------
 
-    output$Summary <- renderPrint({
-      switch(input$Treatment,
-             "Treated" = {
-               o=data_treated %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
-               b=xtabs(Measurement ~ Visit + Time, data = o)
-               if(input$plotvariable=="Visit") b = b
-               else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
-             },
-             "Control" = {
-               o=data_control %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
-               b=xtabs(Measurement ~ Visit + Time, data = o)
-               if(input$plotvariable=="Visit") b = b
-               else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
-             },
-             "Pooled" = {
-               o=data %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
-               b=xtabs(Measurement ~ Visit + Time, data = o)
-               if(input$plotvariable=="Visit") b = b
-               else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "group"))
-             },
-             "Individual" = {
-               b = xtabs(Measurement ~ Visit + Time, 
-                         data %>% filter(ID == input$selectedID)
-                         )
-               if(input$plotvariable=="Visit") b=b
-               else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for", input$Treatment, "with subject ID:", input$selectedID))
-  
-             }
-      )
-  })
-
-# AUC calculation using trapezoidal Rule-----------------------------------
+# AUC Plot-----------------------------------
 
     # Calculate AUC for each individual ID at each Visit using the trapezoidal rule
     auc_trapezoidal<- data %>%
@@ -263,55 +244,59 @@ switch(input$Treatment,
     auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
     auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
     auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
-    
-    output$AUCPlot <- renderPlot({
-      switch(input$Treatment,
-             "Treated" = {
-               ggplot(auc_treated, aes(x = Visit, y = auc, color = ID, group = ID)) +
-                 geom_line(size = 0.5) + geom_point(size = 1.5) +
-                 labs(x = "Visit",
-                      y = "AUC",
-                      color = "ID") +
-                 ggtitle("AUC plot for all observations in the Treated group") +
-                 theme_classic()
-             },
-             "Control" = {
-               ggplot(auc_control, aes(x = Visit, y = auc, color = ID, group = ID)) +
-                 geom_line(size = 0.5) + geom_point(size = 1.5) +
-                 labs(x = "Visit",
-                      y = "AUC",
-                      color = "ID") +
-                 ggtitle("AUC plot for all observations in the Control group") +
-                 theme_classic()
-             },
-             "Pooled" = {
-               ggplot(auc_trapezoidal, aes(x = Visit, y = auc, color = treatment,group = treatment )) +
-                 stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                 stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                 labs(x = "Time",
-                      y = paste(input$SummaryType),
-                      color = "Group")+
-                 theme_classic()+
-                 ggtitle(paste("Summary measure",input$SummaryType,"for AUC in Treatment Groups"))
-             },
-             "Individual" = {
-               ggplot(data %>% filter(ID == input$selectedID) %>%
-                        group_by(ID,Visit) %>%
-                        summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
-                        ungroup(), aes(x = Visit, y = auc, color = ID, group = ID)) +
-                 geom_line(size = 0.5) + geom_point(size = 1.5) +
-                 labs(x = "Visit",
-                      y = "AUC",
-                      color = "ID") +
-                 ggtitle(paste("AUC plot for subject ID:", input$selectedID)) +
-                 theme_classic()
-             }
-      )
-    })
-
+    if(input$showAUC == TRUE)
+    {
+      plotOutput("AUCPlot")
+      output$AUCPlot <- renderPlot({
+        switch(input$Treatment,
+               "Treated" = {
+                 ggplot(auc_treated, aes(x = Visit, y = auc, color = ID, group = ID)) +
+                   geom_line(size = 0.5) + geom_point(size = 1.5) +
+                   labs(x = "Visit",
+                        y = "AUC",
+                        color = "ID") +
+                   ggtitle("AUC plot for all observations in the Treated group") +
+                   theme_classic()
+               },
+               "Control" = {
+                 ggplot(auc_control, aes(x = Visit, y = auc, color = ID, group = ID)) +
+                   geom_line(size = 0.5) + geom_point(size = 1.5) +
+                   labs(x = "Visit",
+                        y = "AUC",
+                        color = "ID") +
+                   ggtitle("AUC plot for all observations in the Control group") +
+                   theme_classic()
+               },
+               "Pooled" = {
+                 ggplot(auc_trapezoidal, aes(x = Visit, y = auc, color = treatment,group = treatment )) +
+                   stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                   stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                   labs(x = "Time",
+                        y = paste(input$SummaryType),
+                        color = "Group")+
+                   theme_classic()+
+                   ggtitle(paste("Summary measure",input$SummaryType,"for AUC in Treatment Groups"))
+               },
+               "Individual" = {
+                 ggplot(data %>% filter(ID == input$selectedID) %>%
+                          group_by(ID,Visit) %>%
+                          summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
+                          ungroup(), aes(x = Visit, y = auc, color = ID, group = ID)) +
+                   geom_line(size = 0.5) + geom_point(size = 1.5) +
+                   labs(x = "Visit",
+                        y = "AUC",
+                        color = "ID") +
+                   ggtitle(paste("AUC plot for subject ID:", input$selectedID,"Group:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)                                                                                                           %>%select(treatment))[1])==1, "Treated","Control"))) +
+                   theme_classic()
+               }
+        )
+      })
+    }
 # AUC Summary -------------------------------------------------------------
-
-    output$AUCSummary <- renderPrint({
+    if(input$showAUC == TRUE && input$sum_AUC == TRUE) 
+    {
+      verbatimTextOutput("AUCSummary")
+      output$AUCSummary <- renderPrint({
       switch(input$Treatment,
              "Treated" = {
                o=auc_treated %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$SummaryType))
@@ -343,11 +328,12 @@ switch(input$Treatment,
                          )
                if(input$plotvariable=="Visit") b=b
                else b = t(b)
-               knitr::kable(b, caption = paste("Summary statistics",input$SummaryType,"for AUC in", input$Treatment, "with subject ID:", input$selectedID))
+               knitr::kable(b, caption = paste("AUC for subject ID:", input$selectedID, "Group:", input$Treatment))
              }
       )
       
 })
+    }
 })
 }
 # Run App -----------------------------------------------------------------

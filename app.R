@@ -81,15 +81,24 @@ conditionalPanel(condition = "input.showAUC == true",
                              choices = choice_summary,
                              selected = choice_summary[1])
                  ),
+checkboxInput("hideplot", "Hide Plot", value = FALSE),
 actionButton("runBtn", "Run")
     ),
     
 # main panel for showing results
     mainPanel(
-                       
-                       plotOutput("InteractionPlot"),
-                       verbatimTextOutput("Summary"),
-                         uiOutput("conditionalUI")
+                conditionalPanel(condition = "input.runBtn > 0 && input.hideplot == false",
+                                 plotOutput("InteractionPlot"),
+                ),
+                conditionalPanel(condition = "input.runBtn > 0",
+                                 verbatimTextOutput("Summary")
+                ),
+                conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true && input.hideplot == false",
+                                 plotOutput("AUCPlot")
+                ),
+                conditionalPanel(condition = "input.runBtn > 0 && input.showAUC == true",
+                                 verbatimTextOutput("AUCSummary")
+                )
               )
   )
 )
@@ -178,7 +187,9 @@ output$InteractionPlot =renderPlot({
                       }
                )
              },
-         "Individual" = {ggplot(data %>% filter(ID == input$selectedID) , 
+         "Individual" = {
+           switch(input$plotvariable,
+                  "Visit" = {ggplot(data %>% filter(ID == input$selectedID) , 
                                 aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
                  geom_line( size = 0.5) + geom_point(size = 1.5) +
                  labs(x = "Time",
@@ -186,9 +197,21 @@ output$InteractionPlot =renderPlot({
                       color = "Visit")+
                  ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
                                                                                                              %>%select(treatment))[1])==1, "Treated","Control")))+
-                 theme_classic()}
-             
-  )})
+                 theme_classic()},
+                  "Time" = {ggplot(data %>% filter(ID == input$selectedID) , 
+                                  aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
+                 geom_line( size = 0.5) + geom_point(size = 1.5) + 
+                 labs(x = "Visit",
+                      y = "Measurement",
+                      color = "Time")+
+                 ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
+                                                                                                             %>%select(treatment))[1])==1, "Treated","Control")))+
+                 theme_classic()
+                  }
+                      )
+         }
+    )
+                                    })
   
   # Summary statistics ------------------------------------------------------
   
@@ -227,11 +250,7 @@ output$InteractionPlot =renderPlot({
            }
     )
   })
-  
-  output$conditionalUI<-renderUI({
-    
-    req(input$runBtn) # wait for the button to be clicked
-    
+
 
 # AUC Plot-----------------------------------
 
@@ -244,10 +263,7 @@ output$InteractionPlot =renderPlot({
     auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
     auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
     auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
-    if(input$showAUC == TRUE)
-    {
-      plotOutput("AUCPlot")
-      output$AUCPlot <- renderPlot({
+output$AUCPlot <- renderPlot({
         switch(input$Treatment,
                "Treated" = {
                  ggplot(auc_treated, aes(x = Visit, y = auc, color = ID, group = ID)) +
@@ -291,12 +307,9 @@ output$InteractionPlot =renderPlot({
                }
         )
       })
-    }
+    
 # AUC Summary -------------------------------------------------------------
-    if(input$showAUC == TRUE && input$sum_AUC == TRUE) 
-    {
-      verbatimTextOutput("AUCSummary")
-      output$AUCSummary <- renderPrint({
+output$AUCSummary <- renderPrint({
       switch(input$Treatment,
              "Treated" = {
                o=auc_treated %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$SummaryType))
@@ -332,8 +345,6 @@ output$InteractionPlot =renderPlot({
              }
       )
       
-})
-    }
 })
 }
 # Run App -----------------------------------------------------------------

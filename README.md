@@ -26,8 +26,7 @@ This Shiny app allows users to upload and analyze measurement data, visualize in
 
 1. **Clone the repository:**
     ```sh
-    git clone https://github.com/yourusername/shiny-measurement-analysis.git
-    cd shiny-measurement-analysis
+    git clone https://github.com/arnabaich96/Shiny-app-for-Visualizing-Panel-data.git
     ```
 
 2. **Install the required R packages:**
@@ -72,8 +71,9 @@ Contributions are welcome! Please feel free to submit a Pull Request or open an 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+Copyright (c) [2024] [Arnab Aich]
 
 ## Acknowledgements
 
 - This project uses the [Shiny](https://shiny.rstudio.com/) framework for building the interactive web application.
-- Special thanks to the authors of the R packages used in this project.
+

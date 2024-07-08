@@ -14,10 +14,6 @@ library(shiny)
 library(ggplot2)
 library(dplyr)
 library(readr)
-data <- read.csv("panel_data.csv")
-# split dataset into treated and control
-data_treated <- data %>% filter(treatment == 1)
-data_control <- data %>% filter(treatment == 0)
 
 # define choices for UI
 choice_TRT = c("Treated", "Control", "Pooled", "Individual")
@@ -116,11 +112,13 @@ server <- function(input, output, session) {
                 choices = unique(data()$ID),
                 selected = unique(data()$ID)[1])
   })
-  # Interaction Plot and confidence interval--------------------------------------------------------
+  # Interaction Plot --------------------------------------------------------
   
   
 output$InteractionPlot =renderPlot({  
   data <- data()
+  data_treated <- data %>% filter(treatment == 1)
+  data_control <- data %>% filter(treatment == 0)
     switch(input$Treatment,
          "Treated" = {
                switch(input$plotvariable,
@@ -130,9 +128,8 @@ output$InteractionPlot =renderPlot({
                           labs(x = "Time",
                                y = paste(input$SummaryType),
                                color = "Visit")+
-                          theme_classic()+ 
-                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))+
-                          
+                          theme_classic()+
+                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
                       },
                       "Time" = {ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
                           stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
@@ -220,6 +217,8 @@ output$InteractionPlot =renderPlot({
   
   output$Summary <- renderPrint({
     data <- data()
+    data_treated <- data %>% filter(treatment == 1)
+    data_control <- data %>% filter(treatment == 0)
     switch(input$Treatment,
            "Treated" = {
              o=data_treated %>% group_by(Visit, Time) %>% summarise_at(vars(Measurement), list(input$SummaryType))
@@ -314,7 +313,7 @@ output$AUCPlot <- renderPlot({
         )
       })
     
-# AUC Summary -------------------------------------------------------------
+  # AUC Summary -------------------------------------------------------------
 output$AUCSummary <- renderPrint({
   data <- data()
   auc_trapezoidal<- data %>%
@@ -364,7 +363,6 @@ output$AUCSummary <- renderPrint({
 }
 # Run App -----------------------------------------------------------------
 
-# run the application
 shinyApp(ui = ui, server = server)
 
 

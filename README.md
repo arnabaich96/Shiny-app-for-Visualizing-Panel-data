@@ -1,4 +1,4 @@
-# Shiny App for Analyzing Measurement Data
+# Shiny App for Analyzing Longitudinal Data
 
 This Shiny app allows users to upload and analyze measurement data, visualize interactions between different groups, and calculate area under the curve (AUC) statistics. The app provides interactive plots and summary statistics based on user inputs.
 

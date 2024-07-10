@@ -11,9 +11,11 @@
 
 # Load required libraries
 library(shiny)
+library(shinyjs)
 library(ggplot2)
 library(dplyr)
 library(readr)
+library(patchwork)
 
 # define choices for UI
 choice_TRT = c("Treated", "Control", "Pooled", "Individual")
@@ -28,6 +30,7 @@ trapezoidal_auc <- function(time, value) {
   }
   return(abs(auc))
 }
+# function to calculate confidence interval
 
 # User Interface ----------------------------------------------------------------------
 
@@ -51,21 +54,31 @@ ui <- fluidPage(
                    selected = choice_TRT[1]),
       
       conditionalPanel(condition = "input.Treatment != 'Individual'",
-                       checkboxInput("Summary", "Summary (default: Mean)", value = FALSE)),
-      
+                       {
+                         checkboxInput("Summary", "Summary (default: Mean)", value = FALSE)
+                         }
+                       ),
+      conditionalPanel(condition = "input.Summary == false && input.Treatment != 'Individual'",
+                       {
+                         checkboxInput("CI", "Confidence Interval", value = FALSE)
+                       }
+      ),
+      conditionalPanel(condition = "input.CI == true && input.Summary == false && input.Treatment != 'Individual'",
+                       sliderInput("CI_level", "Confidence Interval Level",
+                                   min = 0.5, max = 1.0, value = 0.95, step = 0.05)),
       radioButtons("plotvariable", "Select variable for X-axis",
                    choices = choice_plotvariable,
                    selected = "Visit"),
       
-      # Display this only if the plotvariable is Individual
+      # Display this only if the plotvariable is Individual further details in server function
       conditionalPanel(condition = "input.Treatment == 'Individual'",
                        uiOutput("individualSelect")),
       
       conditionalPanel(condition = "input.Summary == true",
                        selectInput("SummaryType", "Select Summary Type",
                                    choices = choice_summary,
-                                   selected = choice_summary[1])),
-      
+                                   selected = choice_summary[1]))
+,  
       # AUC Calculation
       checkboxInput("showAUC", "Area Under Curve (AUC)", value = FALSE),
       
@@ -93,12 +106,11 @@ ui <- fluidPage(
   )
 )
 
-
-
 # Server ------------------------------------------------------------------
 
 # Define server logic
 server <- function(input, output, session) {
+  
   
   data <- reactive({
     req(input$file)
@@ -112,17 +124,25 @@ server <- function(input, output, session) {
                 choices = unique(data()$ID),
                 selected = unique(data()$ID)[1])
   })
+  
+  
   # Interaction Plot --------------------------------------------------------
   
   
 output$InteractionPlot =renderPlot({  
   data <- data()
-  data_treated <- data %>% filter(treatment == 1)
-  data_control <- data %>% filter(treatment == 0)
+  data_treated <- data %>% filter(treatment == unique(data$treatment)[1])
+  data_control <- data %>% filter(treatment == unique(data$treatment)[2])
+  fun_CI <-  function(x) {
+    data <- mean(x)
+    se <- sd(x) / sqrt(length(x))
+    ci <- qnorm(1 - (1 - input$CI_level) / 2) * se
+    data.frame(y = data, ymin = data - ci, ymax = data + ci)
+  }
     switch(input$Treatment,
          "Treated" = {
-               switch(input$plotvariable,
-                      "Visit" = {ggplot(data_treated , aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+               if(input$CI == FALSE){switch(input$plotvariable,
+                      "Visit" = {ggplot(data_treated , aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
                           stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
                           stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
                           labs(x = "Time",
@@ -140,74 +160,160 @@ output$InteractionPlot =renderPlot({
                           theme_classic()+
                           ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
                       }
-               )
-             },
-         "Control" = {
-               switch(input$plotvariable,
-                      "Visit" = {ggplot(data_control, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
+               )}
+              else {switch(input$plotvariable,
+                      "Visit" = {ggplot(data_treated , aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
                           stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
                           stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
                           labs(x = "Time",
                                y = paste(input$SummaryType),
                                color = "Visit")+
                           theme_classic()+
                           ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
                       },
-                      "Time" = {ggplot(data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                      "Time" = {ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
                           stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
                           stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                          stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
                           labs(x = "Visit",
                                y = paste(input$SummaryType),
                                color = "Time") +
                           theme_classic()+
-                          ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                          ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
                       }
                )
+             }
+           },
+         "Control" = {
+           if(input$CI == FALSE){switch(input$plotvariable,
+                                        "Visit" = {ggplot( data_control , aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                                            labs(x = "Time",
+                                                 y = paste(input$SummaryType),
+                                                 color = "Visit")+
+                                            theme_classic()+
+                                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                                        },
+                                        "Time" = {ggplot( data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                                            labs(x = "Visit",
+                                                 y = paste(input$SummaryType),
+                                                 color = "Time") +
+                                            theme_classic()+
+                                            ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
+                                        }
+           )}
+           else {switch(input$plotvariable,
+                        "Visit" = {ggplot( data_control , aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                            stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
+                            labs(x = "Time",
+                                 y = paste(input$SummaryType),
+                                 color = "Visit")+
+                            theme_classic()+
+                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                        },
+                        "Time" = {ggplot( data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                            stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
+                            labs(x = "Visit",
+                                 y = paste(input$SummaryType),
+                                 color = "Time") +
+                            theme_classic()+
+                            ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
+                        }
+           )
+           }
          },
          "Pooled" = {
-           
-               switch(input$plotvariable,
-                      "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                          labs(x = "Time",
-                               y = paste(input$SummaryType),
-                               color = "Visit")+
-                          theme_classic()+
-                          ggtitle("Interaction plot for all observations")
-                      },
-                      "Time" = {ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
-                          stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
-                          stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
-                          labs(x = "Visit",
-                               y = paste(input$SummaryType),
-                               color = "Time") +
-                          theme_classic()+
-                          ggtitle("Interaction plot for all observations")
-                      }
-               )
+           if(input$CI == FALSE){
+             switch(input$plotvariable,
+                    "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                        stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                        stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                        labs(x = "Time",
+                             y = paste(input$SummaryType),
+                             color = "Visit")+
+                        theme_classic()+
+                        ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                    },
+                    "Time" = {ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                        stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                        stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                        labs(x = "Visit",
+                             y = paste(input$SummaryType),
+                             color = "Time") +
+                        theme_classic()+
+                        ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
+                    }
+             )}
+           else {switch(input$plotvariable,
+                        "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                            stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
+                            labs(x = "Time",
+                                 y = paste(input$SummaryType),
+                                 color = "Visit")+
+                            theme_classic()+
+                            ggtitle(paste("Interaction plot for all Observation in the", input$Treatment, "group"))
+                        },
+                        "Time" = {ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group =Time )) +
+                            stat_summary(fun = input$SummaryType, geom = "line", size = 0.5) +
+                            stat_summary(fun = input$SummaryType, geom = "point", size = 1.5) +
+                            stat_summary(fun.data = fun_CI, geom = "errorbar", width = 0.1) +
+                            labs(x = "Visit",
+                                 y = paste(input$SummaryType),
+                                 color = "Time") +
+                            theme_classic()+
+                            ggtitle(paste("Interaction plot for all Observation in the",input$Treatment, "group"))
+                        }
+           )
+           }  
              },
          "Individual" = {
+           data_treated <- data() %>% filter(ID == input$selectedID, treatment == 1)
+           data_control <- data() %>% filter(ID == input$selectedID, treatment == 0)
            switch(input$plotvariable,
-                  "Visit" = {ggplot(data %>% filter(ID == input$selectedID) , 
-                                aes(x = Time, y = Measurement, color = Visit, group = Visit)) +
-                 geom_line( size = 0.5) + geom_point(size = 1.5) +
-                 labs(x = "Time",
-                      y = "Measurement",
-                      color = "Visit")+
-                 ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
-                                                                                                             %>%select(treatment))[1])==1, "Treated","Control")))+
-                 theme_classic()},
-                  "Time" = {ggplot(data %>% filter(ID == input$selectedID) , 
-                                  aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
-                 geom_line( size = 0.5) + geom_point(size = 1.5) + 
-                 labs(x = "Visit",
-                      y = "Measurement",
-                      color = "Time")+
-                 ggtitle(paste("Subject ID:", input$selectedID,"     Assigned arm:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
-                                                                                                             %>%select(treatment))[1])==1, "Treated","Control")))+
-                 theme_classic()
+                  "Visit" = {
+                  p1 = ggplot(data_treated, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                    geom_line(size = 0.5) + geom_point(size = 1.5) +
+                    labs(x = "Time",
+                         y = paste(input$SummaryType),
+                         color = "Visit") +
+                    theme_classic() +
+                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 1", "group"))
+                  p2 = ggplot(data_control, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                    geom_line(size = 0.5) + geom_point(size = 1.5) +
+                    labs(x = "Time",
+                         y = paste(input$SummaryType),
+                         color = "Visit") +
+                    theme_classic() +
+                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 0", "group"))
+                  p1 / p2},
+                  "Time" = {
+                  p1 = ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
+                    geom_line(size = 0.5) + geom_point(size = 1.5) +
+                    labs(x = "Visit",
+                         y = paste(input$SummaryType),
+                         color = "Time") +
+                    theme_classic() +
+                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 1", "group"))
+                  p2 = ggplot(data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
+                    geom_line(size = 0.5) + geom_point(size = 1.5) +
+                    labs(x = "Visit",
+                         y = paste(input$SummaryType),
+                         color = "Time") +
+                    theme_classic() +
+                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 0", "group"))
+                  p1 / p2
                   }
+                 
                       )
          }
     )

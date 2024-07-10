@@ -65,7 +65,7 @@ ui <- fluidPage(
       ),
       conditionalPanel(condition = "input.CI == true && input.Summary == false && input.Treatment != 'Individual'",
                        sliderInput("CI_level", "Confidence Interval Level",
-                                   min = 0.5, max = 1.0, value = 0.95, step = 0.05)),
+                                   min = 0.5, max = 1.0, value = 0.95, step = 0.01)),
       radioButtons("plotvariable", "Select variable for X-axis",
                    choices = choice_plotvariable,
                    selected = "Visit"),
@@ -131,8 +131,8 @@ server <- function(input, output, session) {
   
 output$InteractionPlot =renderPlot({  
   data <- data()
-  data_treated <- data %>% filter(treatment == unique(data$treatment)[1])
-  data_control <- data %>% filter(treatment == unique(data$treatment)[2])
+  data_treated <- data %>% filter(treatment == 1)
+  data_control <- data %>% filter(treatment == 0)
   fun_CI <-  function(x) {
     data <- mean(x)
     se <- sd(x) / sqrt(length(x))

@@ -18,7 +18,7 @@ data_cpep <- data_cpep %>% mutate(ID = as.character(ID)
 
 # if treatment variable is NA replace it with the treatment of same ID
  data_cpep <- data_cpep %>% group_by(ID) %>% mutate(treatment = ifelse(is.na(treatment), treatment[!is.na(treatment)], treatment))
-# data_cpep <- data_cpep %>% mutate(treatment = ifelse(treatment == "Pre OGTT start", "0", "1"))
+ data_cpep <- data_cpep %>% mutate(treatment = ifelse(treatment == "Pre OGTT start", "0", "1"))
 unique(data_cpep$Visit)
 # reaname visit from 1 to 8
 mapping <- c("0" = "1", "2" = "2", "4" = "3", "8" = "4", "12" = "5", "16" = "6", "20" = "7", "26" = "8")

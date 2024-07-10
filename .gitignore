@@ -2,12 +2,11 @@
 *.Rproj
 *.Rprofile
 *.Rproj.user
-
 # Ignore other common files
 .Rhistory
 .RData
 .Ruserdata
 .Rapp.history
 *.pper
-
 .Rproj.user
+*.csv

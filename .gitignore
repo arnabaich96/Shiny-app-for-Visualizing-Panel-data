@@ -9,4 +9,6 @@
 .Rapp.history
 *.pper
 .Rproj.user
-*.csv
+# hide all csv files
+.csv 
+

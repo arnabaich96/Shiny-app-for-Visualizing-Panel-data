@@ -10,5 +10,4 @@
 *.pper
 .Rproj.user
 # hide all csv files
-.csv 
-
+.data

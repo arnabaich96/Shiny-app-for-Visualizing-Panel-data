@@ -16,6 +16,7 @@ library(ggplot2)
 library(dplyr)
 library(readr)
 library(patchwork)
+library(knitr)
 
 # define choices for UI
 choice_TRT = c("Treated", "Control", "Pooled", "Individual")
@@ -24,6 +25,7 @@ choice_summary = c("mean", "sd" ,"median", "min", "max", "IQR")
 # Function to calculate AUC using the trapezoidal rule
 trapezoidal_auc <- function(time, value) {
   n <- length(time)
+  time = as.numeric(time)
   auc <- 0
   for (i in 1:(n-1)) {
     auc <- auc + (time[i+1] - time[i]) * (value[i+1] + value[i]) / 2
@@ -230,7 +232,7 @@ output$InteractionPlot =renderPlot({
            )
            }
          },
-         "Pooled" = {
+         "Pooled" =  {
            if(input$CI == FALSE){
              switch(input$plotvariable,
                     "Visit" = {ggplot(data, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
@@ -277,41 +279,25 @@ output$InteractionPlot =renderPlot({
            }  
              },
          "Individual" = {
-           data_treated <- data() %>% filter(ID == input$selectedID, treatment == 1)
-           data_control <- data() %>% filter(ID == input$selectedID, treatment == 0)
+           data<- data %>% filter(ID == input$selectedID)
            switch(input$plotvariable,
                   "Visit" = {
-                  p1 = ggplot(data_treated, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
+                  ggplot(data, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
                     geom_line(size = 0.5) + geom_point(size = 1.5) +
                     labs(x = "Time",
                          y = paste(input$SummaryType),
                          color = "Visit") +
                     theme_classic() +
-                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 1", "group"))
-                  p2 = ggplot(data_control, aes(x = Time, y = Measurement, color = as.factor(Visit), group = Visit)) +
-                    geom_line(size = 0.5) + geom_point(size = 1.5) +
-                    labs(x = "Time",
-                         y = paste(input$SummaryType),
-                         color = "Visit") +
-                    theme_classic() +
-                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 0", "group"))
-                  p1 / p2},
+                    ggtitle(paste("Interaction plot for Subject", input$selectedID))
+                  },
                   "Time" = {
-                  p1 = ggplot(data_treated, aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
-                    geom_line(size = 0.5) + geom_point(size = 1.5) +
-                    labs(x = "Visit",
-                         y = paste(input$SummaryType),
-                         color = "Time") +
-                    theme_classic() +
-                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 1", "group"))
-                  p2 = ggplot(data_control, aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
-                    geom_line(size = 0.5) + geom_point(size = 1.5) +
-                    labs(x = "Visit",
-                         y = paste(input$SummaryType),
-                         color = "Time") +
-                    theme_classic() +
-                    ggtitle(paste("Interaction plot for all Observation in the", "Treatment 0", "group"))
-                  p1 / p2
+                    ggplot(data, aes(x = Visit, y = Measurement, color = as.factor(Time), group = Time)) +
+                      geom_line(size = 0.5) + geom_point(size = 1.5) +
+                      labs(x = "Visit",
+                           y = paste(input$SummaryType),
+                           color = "Time") +
+                      theme_classic() +
+                      ggtitle(paste("Interaction plot for Subject", input$selectedID))
                   }
                  
                       )
@@ -349,13 +335,10 @@ output$InteractionPlot =renderPlot({
            },
            "Individual" = {
              b = xtabs(Measurement ~ Visit + Time, 
-                       data %>% filter(ID == input$selectedID)
-             )
+                       data %>% filter(ID == input$selectedID))
              if(input$plotvariable=="Visit") b=b
              else b = t(b)
-             knitr::kable(b, caption = paste("Individual record for subject ID:", input$selectedID,"Group:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)
-                                                                                                                                     %>%select(treatment))[1])==1, "Treated","Control")))
-             
+             knitr::kable(b, caption = paste("Individual record for subject ID:", input$selectedID))
            }
     )
   })
@@ -375,6 +358,7 @@ output$AUCPlot <- renderPlot({
   auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
   auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
   auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
+  auc_ID <- auc_trapezoidal %>% filter(ID == input$selectedID) %>% ungroup()
         switch(input$Treatment,
                "Treated" = {
                  ggplot(auc_treated, aes(x = Visit, y = auc, color = ID, group = ID)) +
@@ -405,16 +389,12 @@ output$AUCPlot <- renderPlot({
                    ggtitle(paste("Summary measure",input$AUC_SummaryType,"for AUC in Treatment Groups"))
                },
                "Individual" = {
-                 ggplot(data %>% filter(ID == input$selectedID) %>%
-                          group_by(ID,Visit) %>%
-                          summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
-                          ungroup(), aes(x = Visit, y = auc, color = ID, group = ID)) +
+                 ggplot(auc_ID, aes(x = Visit, y = auc, group = ID)) +
                    geom_line(size = 0.5) + geom_point(size = 1.5) +
                    labs(x = "Visit",
                         y = "AUC",
-                        color = "ID") +
-                   ggtitle(paste("AUC plot for subject ID:", input$selectedID,"Group:",ifelse(as.numeric(unique(data %>% filter(ID ==input$selectedID)                                                                                                           %>%select(treatment))[1])==1, "Treated","Control"))) +
-                   theme_classic()
+                        color = "ID") + theme_classic() +
+                  ggtitle(paste("AUC plot for subject ID:", input$selectedID))
                }
         )
       })
@@ -430,6 +410,7 @@ output$AUCSummary <- renderPrint({
   auc_trapezoidal$treatment <- factor(auc_trapezoidal$treatment, levels = c(0, 1), labels = c("Control", "Treatment"))
   auc_treated <- auc_trapezoidal %>% filter(treatment == "Treatment")
   auc_control <- auc_trapezoidal %>% filter(treatment == "Control")
+  auc_ID <- auc_trapezoidal %>% filter(ID == input$selectedID)
       switch(input$Treatment,
              "Treated" = {
                o=auc_treated %>% group_by(Visit) %>% summarise_at(vars(auc), list(input$AUC_SummaryType))
@@ -453,15 +434,12 @@ output$AUCSummary <- renderPrint({
                knitr::kable(b, caption = paste("Summary statistics",input$AUC_SummaryType,"for AUC in", input$Treatment, "group"))
              },
              "Individual" = {
-               b = xtabs(auc ~ Visit, 
-                         data %>% filter(ID == input$selectedID) %>%
-                           group_by(ID,Visit) %>%
-                           summarise(auc = trapezoidal_auc(as.numeric(Time), Measurement))%>%
-                           ungroup()
-                         )
+               b =  xtabs(auc ~ Visit, 
+                          auc_trapezoidal %>% filter(ID == input$selectedID))
                if(input$plotvariable=="Visit") b=b
                else b = t(b)
                knitr::kable(b, caption = paste("AUC for subject ID:", input$selectedID, "Group:", input$Treatment))
+              
              }
       )
       

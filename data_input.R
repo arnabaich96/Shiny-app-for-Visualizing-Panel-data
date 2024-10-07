@@ -1,6 +1,6 @@
 library(readr)
 library(dplyr)
-data_cpep <- read_csv("data_cpep_mice.csv")
+data_cpep <- read_csv("data/data_cpep_mice.csv")
 
 # rename variables for requirement of the app
 data_cpep <- data_cpep %>% rename(
@@ -29,5 +29,5 @@ table(data_cpep$treatment,data_cpep$ID)
 data_cpep <- data_cpep[,-c(1,2)]
 # write the data to a csv file
 # 
-write.csv(data_cpep, "data_cpep.csv", row.names = FALSE)
+write.csv(data_cpep, "data/data_cpep.csv", row.names = FALSE)
 unique(data_cpep$treatment)

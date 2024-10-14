@@ -11,3 +11,4 @@
 .Rproj.user
 # hide all csv files
 .data
+/.Rproj.user
